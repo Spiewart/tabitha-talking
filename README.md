@@ -53,36 +53,48 @@ Blog posts are authored in the Wagtail CMS admin (`/cms/`) using a StreamField b
 
 2. Install dependencies:
    ```bash
-   uv sync
+   uv pip install -r pyproject.toml
+   # With dev dependencies:
+   uv pip install -r pyproject.toml --group dev
    ```
 
 3. Set up environment variables:
    - Local defaults live in `.envs/.local/.django` and `.envs/.local/.postgres`
    - Set `RECAPTCHA_V3_SITE_KEY` and `RECAPTCHA_V3_SECRET_KEY` for the contact form
 
-4. Run migrations:
+4. Create the database:
+   ```bash
+   createdb tabitha_talking
+   ```
+
+5. Run migrations:
    ```bash
    python manage.py migrate
    ```
 
-5. Create a superuser:
+6. Create a superuser:
    ```bash
    python manage.py createsuperuser
    ```
 
-6. Run the development server:
+7. Run the development server:
    ```bash
    python manage.py runserver
    ```
 
 ### Setting Up Content
 
+After running migrations, the Wagtail site is configured with a clean root page (no default "Welcome" placeholder). Create your content pages in the Wagtail admin:
+
 1. Access Wagtail admin at `http://localhost:8000/cms/`
-2. Create a **Portfolio Index Page** as a child of the root page
-3. Add **Demo Reel Pages** as children of the portfolio index
-4. Create an **About Page** as a child of the root page
-5. Create a **Blog Index Page** and add **Blog Pages** under it
-6. Configure the site under Settings > Sites to set the root page
+2. Navigate to **Pages** — you'll see the Root page
+3. Create a **Portfolio Index Page** as a child of Root (slug: `portfolio`) → `/portfolio/`
+4. Add **Demo Reel Pages** as children of the Portfolio Index
+5. Create an **About Page** as a child of Root (slug: `about`) → `/about/`
+6. Create a **Blog Index Page** as a child of Root (slug: `blog`) → `/blog/`
+7. Add **Blog Pages** as children of the Blog Index
+
+The homepage (`/`) is handled by a Django view, not a Wagtail page. The site root is already configured by the migration — no manual site setup needed.
 
 ### Useful Endpoints
 
