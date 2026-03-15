@@ -1,0 +1,188 @@
+"""Views for sitemap, robots.txt, RSS feed, contact, home, and health check."""
+
+from django.conf import settings
+from django.contrib import messages
+from django.core.mail import send_mail
+from django.db import connection
+from django.db.utils import DatabaseError
+from django.db.utils import OperationalError
+from django.http import HttpResponse
+from django.http import JsonResponse
+from django.shortcuts import redirect
+from django.shortcuts import render
+from django.template.loader import render_to_string
+from django.views.decorators.cache import cache_page
+
+
+def sitemap_view(request):
+    """Generate sitemap.xml for search engines."""
+
+    from tabitha_talking.blog.models import BlogIndexPage
+    from tabitha_talking.blog.models import BlogPage
+    from tabitha_talking.portfolio.models import AboutPage
+    from tabitha_talking.portfolio.models import DemoReelPage
+    from tabitha_talking.portfolio.models import PortfolioIndexPage
+
+    blog_pages = BlogPage.objects.live().public().order_by("-date")
+    blog_index = BlogIndexPage.objects.live().public().first()
+    portfolio_index = PortfolioIndexPage.objects.live().public().first()
+    demo_pages = DemoReelPage.objects.live().public()
+    about_page = AboutPage.objects.live().public().first()
+
+    context = {
+        "blog_index": blog_index,
+        "blog_pages": blog_pages,
+        "portfolio_index": portfolio_index,
+        "demo_pages": demo_pages,
+        "about_page": about_page,
+        "site_url": request.build_absolute_uri("/").rstrip("/"),
+    }
+
+    xml_content = render_to_string("sitemap.xml", context)
+    return HttpResponse(xml_content, content_type="application/xml")
+
+
+@cache_page(60 * 60 * 24)  # Cache for 24 hours
+def robots_txt_view(request):
+    """Generate robots.txt for search engine crawlers."""
+    context = {
+        "site_url": request.build_absolute_uri("/").rstrip("/"),
+    }
+
+    txt_content = render_to_string("robots.txt", context)
+    return HttpResponse(txt_content, content_type="text/plain")
+
+
+def rss_feed_view(request):
+    """Generate RSS feed for blog posts."""
+    from tabitha_talking.blog.models import BlogPage
+
+    blog_posts = BlogPage.objects.live().public().order_by("-date")[:20]
+
+    context = {
+        "blog_posts": blog_posts,
+        "site_url": request.build_absolute_uri("/").rstrip("/"),
+        "site_name": "Tabitha Talking",
+    }
+
+    xml_content = render_to_string("feed.xml", context)
+    return HttpResponse(xml_content, content_type="application/rss+xml")
+
+
+def home_view(request):
+    """Homepage with hero, featured demo reel, and latest blog post."""
+    from tabitha_talking.blog.models import BlogPage
+    from tabitha_talking.portfolio.models import DemoReelPage
+
+    # Get featured demo reel (first published one)
+    featured_demo = DemoReelPage.objects.live().public().first()
+
+    # Get latest blog post
+    recent_post = BlogPage.objects.live().public().order_by("-date").first()
+
+    return render(
+        request,
+        "pages/home.html",
+        {
+            "site_url": request.build_absolute_uri("/").rstrip("/"),
+            "site_name": "Tabitha Talking",
+            "featured_demo": featured_demo,
+            "recent_post": recent_post,
+        },
+    )
+
+
+def blog_view(request):
+    """Blog index page that serves BlogIndexPage if it exists."""
+    from tabitha_talking.blog.models import BlogIndexPage
+
+    blog_index = BlogIndexPage.objects.live().public().first()
+    if blog_index:
+        return blog_index.serve(request)
+
+    return render(
+        request,
+        "blog/index.html",
+        {
+            "site_url": request.build_absolute_uri("/").rstrip("/"),
+            "site_name": "Tabitha Talking",
+        },
+    )
+
+
+def contact_view(request):
+    """Contact form page. Sends an HTML email to the site admin on submission."""
+    from tabitha_talking.forms import ContactForm
+
+    if request.method == "POST":
+        form = ContactForm(request.POST, request=request)
+        if form.is_valid():
+            name = form.cleaned_data["name"]
+            email = form.cleaned_data["email"]
+            message = form.cleaned_data["message"]
+
+            html_message = render_to_string(
+                "pages/email/contact_notification.html",
+                {"name": name, "email": email, "message": message},
+            )
+
+            try:
+                send_mail(
+                    f"Contact form: {name}",
+                    "",
+                    settings.DEFAULT_FROM_EMAIL,
+                    [settings.ADMINS[0][1]],
+                    html_message=html_message,
+                    fail_silently=False,
+                )
+            except OSError:
+                msg = (
+                    "Sorry, there was a problem sending your message."
+                    " Please try again later."
+                )
+                messages.error(request, msg)
+            else:
+                request.session["contact_success"] = {
+                    "name": name,
+                    "email": email,
+                    "message": message,
+                }
+                return redirect("contact_success")
+    else:
+        form = ContactForm()
+
+    return render(request, "pages/contact.html", {"form": form})
+
+
+def contact_success_view(request):
+    """Display contact form success page with submitted message details."""
+    success_data = request.session.pop("contact_success", None)
+
+    if not success_data:
+        return redirect("contact")
+
+    return render(request, "pages/contact_success.html", success_data)
+
+
+def health_check(request):
+    """Health check endpoint that verifies app and database connectivity."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+
+        return JsonResponse(
+            {
+                "status": "ok",
+                "database": "connected",
+            },
+            status=200,
+        )
+    except (DatabaseError, OperationalError) as e:
+        return JsonResponse(
+            {
+                "status": "error",
+                "database": "disconnected",
+                "error": str(e),
+            },
+            status=503,
+        )
