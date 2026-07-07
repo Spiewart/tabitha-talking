@@ -276,3 +276,7 @@ squeaky_knees/media/
 
 # User-uploaded media (production uses S3; local uploads stay local)
 tabitha_talking/media/
+
+# Private local notes (this repo is public)
+SECURITY_TODO.local.md
+*.local.md
