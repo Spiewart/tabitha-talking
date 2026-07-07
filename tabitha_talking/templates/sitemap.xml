@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>{{ site_url }}/</loc>
+        <lastmod>{% now "Y-m-d" %}</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>1.0</priority>
+    </url>
+
+    {% if portfolio_index %}
+    <url>
+        <loc>{{ site_url }}{{ portfolio_index.url }}</loc>
+        <lastmod>{% now "Y-m-d" %}</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.9</priority>
+    </url>
+    {% endif %}
+
+    {% for page in demo_pages %}
+    <url>
+        <loc>{{ site_url }}{{ page.url }}</loc>
+        <lastmod>{% if page.last_published_at %}{{ page.last_published_at|date:"Y-m-d" }}{% else %}{% now "Y-m-d" %}{% endif %}</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.8</priority>
+    </url>
+    {% endfor %}
+
+    {% if about_page %}
+    <url>
+        <loc>{{ site_url }}{{ about_page.url }}</loc>
+        <lastmod>{% if about_page.last_published_at %}{{ about_page.last_published_at|date:"Y-m-d" }}{% else %}{% now "Y-m-d" %}{% endif %}</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    {% endif %}
+
+    {% if blog_index %}
+    <url>
+        <loc>{{ site_url }}{{ blog_index.url }}</loc>
+        <lastmod>{% now "Y-m-d" %}</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.6</priority>
+    </url>
+    {% endif %}
+
+    {% for page in blog_pages %}
+    <url>
+        <loc>{{ site_url }}{{ page.url }}</loc>
+        <lastmod>{% if page.last_published_at %}{{ page.last_published_at|date:"Y-m-d" }}{% else %}{% now "Y-m-d" %}{% endif %}</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.5</priority>
+    </url>
+    {% endfor %}
+</urlset>

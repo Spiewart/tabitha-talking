@@ -1,0 +1,52 @@
+log:
+  level: INFO
+
+entryPoints:
+  web:
+    address: ":80"
+
+  web-secure:
+    address: ":443"
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "admin@tabithatalking.com"
+      storage: /etc/traefik/acme.json
+      httpChallenge:
+        entryPoint: web
+
+http:
+  routers:
+    web-router:
+      rule: "Host(`tabithatalking.com`) || Host(`www.tabithatalking.com`)"
+      entryPoints:
+        - web
+      middlewares:
+        - https-redirect
+      service: django
+
+    web-secure-router:
+      rule: "Host(`tabithatalking.com`) || Host(`www.tabithatalking.com`)"
+      entryPoints:
+        - web-secure
+      service: django
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    https-redirect:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+  services:
+    django:
+      loadBalancer:
+        servers:
+          - url: http://web:8000
+
+providers:
+  file:
+    filename: /etc/traefik/traefik.yml
+    watch: true

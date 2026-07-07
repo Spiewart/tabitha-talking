@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% load wagtailcore_tags %}
+
+{% block title %}
+  Tabitha Talking | Voice Actor
+{% endblock title %}
+{% block content %}
+  <section class="container py-5">
+    <div class="px-5 pt-5 pb-3 mb-4 bg-light rounded-3 text-center">
+      <div class="container-fluid py-3">
+        <h1 class="display-4 fw-bold">Tabitha Talking</h1>
+        <p class="fs-5">Professional Voice Actor</p>
+        <div class="d-flex flex-wrap gap-2 justify-content-center">
+          <a class="btn btn-primary btn-lg" href="/portfolio/">Hear My Demos</a>
+          <a class="btn btn-outline-secondary btn-lg" href="{% url 'contact' %}">Book Me</a>
+        </div>
+      </div>
+    </div>
+    {% if featured_demo %}
+      <div class="card my-4 shadow-sm">
+        <div class="card-body">
+          <h2 class="h4">Featured Demo</h2>
+          <h3 class="h5 mt-3">{{ featured_demo.title }}</h3>
+          {% if featured_demo.description %}<div class="mb-2">{{ featured_demo.description|richtext }}</div>{% endif %}
+          <audio controls class="w-100 mt-2">
+            <source src="{{ featured_demo.audio_file.url }}" />
+            Your browser does not support the audio element.
+          </audio>
+          {% if featured_demo.duration %}<small class="text-muted">Duration: {{ featured_demo.duration }}</small>{% endif %}
+        </div>
+      </div>
+    {% endif %}
+    {% if recent_post %}
+      <div class="card my-4 shadow-sm">
+        <div class="card-body">
+          <h2 class="h4">Latest from the Blog</h2>
+          <h3 class="h5 mt-3">{{ recent_post.title }}</h3>
+          <p class="text-muted mb-2">{{ recent_post.date }}</p>
+          <p class="mb-3">{{ recent_post.intro }}</p>
+          <a class="btn btn-sm btn-primary" href="{{ recent_post.url }}">Read more</a>
+        </div>
+      </div>
+    {% endif %}
+  </section>
+{% endblock content %}

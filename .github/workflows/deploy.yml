@@ -1,0 +1,220 @@
+name: Deploy to DigitalOcean
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    description: 'Manually trigger deployment'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/tabitha_talking
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    environment: DigitalOcean
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LOWER=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.sha }} \
+            .
+
+      - name: Push image to GHCR
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.sha }}
+
+      - name: Run collectstatic from CI (faster than on droplet)
+        run: |
+          docker run --rm \
+            -e DJANGO_SETTINGS_MODULE=config.settings.production \
+            -e DJANGO_AWS_ACCESS_KEY_ID="${{ secrets.DJANGO_AWS_ACCESS_KEY_ID }}" \
+            -e DJANGO_AWS_SECRET_ACCESS_KEY="${{ secrets.DJANGO_AWS_SECRET_ACCESS_KEY }}" \
+            -e DJANGO_AWS_STORAGE_BUCKET_NAME="${{ secrets.DJANGO_AWS_STORAGE_BUCKET_NAME }}" \
+            -e DJANGO_SECRET_KEY="${{ secrets.DJANGO_SECRET_KEY }}" \
+            -e MAILGUN_API_KEY="${{ secrets.MAILGUN_API_KEY }}" \
+            -e MAILGUN_DOMAIN="${{ secrets.MAILGUN_DOMAIN }}" \
+            -e SENTRY_DSN="${{ secrets.SENTRY_DSN }}" \
+                        -e DJANGO_ADMIN_URL="admin/" \
+                        -e DJANGO_ALLOWED_HOSTS="*" \
+            -e DATABASE_URL="sqlite:////tmp/dummy.db" \
+            -e USE_DOCKER=yes \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest \
+            uv run python manage.py collectstatic --noinput --verbosity 1
+
+      - name: Upload Docker Compose and configs
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.production.yml,compose/production/**"
+          target: "/opt/tabitha_talking"
+
+      - name: Deploy to Droplet
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 60m
+          timeout: 70m
+          script: |
+            set -euo pipefail
+
+            # Ensure swap space exists for low-memory environments
+            if [ ! -f /swapfile ]; then
+              echo "=== Setting up swap space ==="
+              fallocate -l 1G /swapfile
+              chmod 600 /swapfile
+              mkswap /swapfile
+              swapon /swapfile
+              echo '/swapfile none swap sw 0 0' >> /etc/fstab
+              swapon --show
+            fi
+
+            # Stop web/traefik to free image layers before pulling
+            echo "=== Stopping web/traefik to free space ==="
+            docker compose -f /opt/tabitha_talking/docker-compose.production.yml stop web traefik || true
+
+            # Free disk space (remove unused containers, images, build cache)
+            echo "=== Cleaning up Docker disk usage ==="
+            docker container prune -f
+            docker image prune -af --filter "until=24h"
+            docker builder prune -af
+
+            # Remove previous app image to free space before pull
+            echo "=== Removing previous app image ==="
+            docker image rm -f ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest || true
+
+            # Ensure app and Traefik directories exist
+            mkdir -p /opt/tabitha_talking
+            mkdir -p /opt/tabitha_talking/traefik
+            if [ ! -f /opt/tabitha_talking/traefik/acme.json ]; then
+              touch /opt/tabitha_talking/traefik/acme.json
+              chmod 600 /opt/tabitha_talking/traefik/acme.json
+            fi
+
+            # Ensure Docker Compose env exists
+            if [ -n "${{ secrets.ACME_EMAIL }}" ]; then
+              printf "IMAGE_NAME=%s\nACME_EMAIL=%s\n" "${{ env.IMAGE_NAME_LOWER }}" "${{ secrets.ACME_EMAIL }}" > /opt/tabitha_talking/.env
+            elif [ ! -f /opt/tabitha_talking/.env ]; then
+              printf "IMAGE_NAME=%s\nACME_EMAIL=\n" "${{ env.IMAGE_NAME_LOWER }}" > /opt/tabitha_talking/.env
+            fi
+
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull latest image
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
+
+            # Check for required environment files
+            if [ ! -f /opt/tabitha_talking/.envs/.production/.django ]; then
+              echo "ERROR: Missing /opt/tabitha_talking/.envs/.production/.django"
+              exit 1
+            fi
+            if [ ! -f /opt/tabitha_talking/.envs/.production/.postgres ]; then
+              echo "ERROR: Missing /opt/tabitha_talking/.envs/.production/.postgres"
+              exit 1
+            fi
+
+            # Load PostgreSQL environment variables
+            set -a
+            source /opt/tabitha_talking/.envs/.production/.postgres
+            set +a
+
+            # Ensure Docker network exists
+            docker network create tabitha_talking_network 2>/dev/null || true
+
+            # Pull latest service images
+            docker compose -f /opt/tabitha_talking/docker-compose.production.yml pull
+
+            # Start services with Docker Compose
+            docker compose -f /opt/tabitha_talking/docker-compose.production.yml up -d
+
+            # Run migrations (with timeout to avoid hanging deploys)
+            timeout 10m docker compose -f /opt/tabitha_talking/docker-compose.production.yml exec -T web \
+              /bin/sh -lc 'AWS_EC2_METADATA_DISABLED=true uv run python manage.py migrate --noinput'
+
+            # Collectstatic runs in CI now (much faster), so skip here
+            echo "=== Skipping collectstatic (already run in CI) ==="
+
+            # Clean up old images
+            docker image prune -af
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+
+            echo "=== Waiting for container to start ==="
+            sleep 10
+
+            echo "=== Checking if container is running ==="
+            if ! docker ps | grep tabitha_talking_web; then
+              echo "ERROR: Container not running!"
+              echo "=== Container logs ==="
+              docker logs tabitha_talking_web 2>&1 | tail -50 || echo "No logs available"
+              echo "=== All containers ==="
+              docker ps -a
+              exit 1
+            fi
+
+            echo "=== Container is running ==="
+            docker ps | grep tabitha_talking_web
+
+            echo "=== Waiting for container health check to pass ==="
+            for i in {1..30}; do
+              health_status=$(docker inspect --format='{{.State.Health.Status}}' tabitha_talking_web 2>/dev/null || echo "none")
+
+              if [ "$health_status" = "healthy" ]; then
+                echo "✅ Container is healthy!"
+                echo "=== Testing endpoint via Traefik ==="
+                http_code=$(curl -s -o /dev/null -w "%{http_code}" https://tabithatalking.com/health/ --max-time 5 || echo "000")
+                if [ "$http_code" = "200" ]; then
+                  echo "✅ Health endpoint accessible via HTTPS!"
+                  exit 0
+                else
+                  echo "⚠️  Container healthy but HTTPS returned $http_code (may be SSL cert provisioning)"
+                  exit 0
+                fi
+              fi
+
+              echo "Attempt $i/30: Container health status is '$health_status'"
+              sleep 2
+            done
+
+            echo "ERROR: Health check failed after 30 attempts"
+            echo "=== Container logs ==="
+            docker logs tabitha_talking_web 2>&1 | tail -100
+            exit 1

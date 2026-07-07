@@ -1,0 +1,91 @@
+services:
+  web:
+    image: ghcr.io/${IMAGE_NAME}:latest
+    container_name: tabitha_talking_web
+    restart: unless-stopped
+    networks:
+      - tabitha_talking_network
+    env_file:
+      - /opt/tabitha_talking/.envs/.production/.django
+      - /opt/tabitha_talking/.envs/.production/.postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - REDIS_URL=redis://redis:6379/0
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "wget --quiet --tries=1 --spider --header='Host: tabithatalking.com' --header='X-Forwarded-Proto: https' http://127.0.0.1:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  postgres:
+    image: postgres:16
+    container_name: tabitha_talking_postgres
+    restart: unless-stopped
+    networks:
+      - tabitha_talking_network
+    shm_size: 128m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=25
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - /opt/tabitha_talking/.envs/.production/.postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tabitha_talking_redis
+    restart: unless-stopped
+    networks:
+      - tabitha_talking_network
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - redis_data:/data
+
+  traefik:
+    image: traefik:v3.1
+    container_name: tabitha_talking_traefik
+    restart: unless-stopped
+    networks:
+      - tabitha_talking_network
+    command:
+        - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+        - /opt/tabitha_talking/traefik/acme.json:/etc/traefik/acme.json:rw
+        - ./compose/production/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  tabitha_talking_network:
+    driver: bridge

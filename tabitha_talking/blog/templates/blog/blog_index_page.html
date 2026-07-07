@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% load static wagtailcore_tags wagtailimages_tags %}
+
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+  <div class="container mt-4">
+    <div class="row">
+      <div class="col-lg-8 mx-auto">
+        <h1>{{ page.title }}</h1>
+        {% if page.intro %}<div class="lead">{{ page.intro|richtext }}</div>{% endif %}
+        <hr />
+        {% if blogpages %}
+          {% for post in blogpages %}
+            <div class="card mb-4">
+              {% if post.header_image %}
+                {% image post.header_image fill-800x450 class="card-img-top" alt=post.title %}
+              {% endif %}
+              <div class="card-body">
+                <h2 class="card-title">
+                  <a href="{% pageurl post %}">{{ post.title }}</a>
+                </h2>
+                <p class="text-muted">
+                  <small>{{ post.date }}</small>
+                </p>
+                {% if post.intro %}<p class="card-text">{{ post.intro }}</p>{% endif %}
+                <a href="{% pageurl post %}" class="btn btn-primary">Read More</a>
+              </div>
+            </div>
+          {% endfor %}
+          <!-- Pagination -->
+          {% if is_paginated %}
+            <nav aria-label="Page navigation">
+              <ul class="pagination">
+                {% if page_obj.has_previous %}
+                  <li class="page-item">
+                    <a class="page-link" href="?page=1">First</a>
+                  </li>
+                  <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                  </li>
+                {% endif %}
+                {% for num in paginator.page_range %}
+                  {% if page_obj.number == num %}
+                    <li class="page-item active">
+                      <span class="page-link">{{ num }}</span>
+                    </li>
+                  {% else %}
+                    <li class="page-item">
+                      <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                    </li>
+                  {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                  <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                  </li>
+                  <li class="page-item">
+                    <a class="page-link" href="?page={{ paginator.num_pages }}">Last</a>
+                  </li>
+                {% endif %}
+              </ul>
+            </nav>
+          {% endif %}
+        {% else %}
+          <div class="alert alert-info mt-4">
+            <p>
+              <strong>No blog posts yet.</strong>
+            </p>
+            <p>Check back soon for new posts!</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock content %}

@@ -30,7 +30,7 @@ def configure_site(apps, schema_editor):
     else:
         # No Site exists — create one
         Site.objects.create(
-            hostname="tabithatalking.blog",
+            hostname="tabithatalking.com",
             port=80,
             site_name="Tabitha Talking",
             root_page=root_page,

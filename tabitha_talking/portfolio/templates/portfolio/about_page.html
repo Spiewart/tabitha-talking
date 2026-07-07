@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% load wagtailcore_tags wagtailimages_tags %}
+
+{% block title %}
+  About | Tabitha Talking
+{% endblock title %}
+
+{% block meta_description %}
+  Learn about Tabitha — professional voice actor.
+{% endblock meta_description %}
+
+{% block content %}
+  <h1>{{ page.title }}</h1>
+
+  <div class="row my-4">
+    {% if page.profile_photo %}
+      <div class="col-md-4 mb-3">
+        {% image page.profile_photo fill-400x500 class="img-fluid rounded" %}
+      </div>
+      <div class="col-md-8">
+        {% for block in page.body %}
+          {% include_block block %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="col-12">
+        {% for block in page.body %}
+          {% include_block block %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% if page.credentials %}
+    <section class="mt-4">
+      <h2>Training &amp; Credentials</h2>
+      <div>{{ page.credentials|safe }}</div>
+    </section>
+  {% endif %}
+{% endblock content %}

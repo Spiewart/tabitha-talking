@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% load wagtailcore_tags wagtailimages_tags %}
+
+{% block title %}
+  Portfolio | Tabitha Talking
+{% endblock title %}
+{% block content %}
+  <h1>{{ page.title }}</h1>
+  {% if page.intro %}<div class="mb-4">{{ page.intro|richtext }}</div>{% endif %}
+  {% for category, demos in demos_by_category.items %}
+    <section class="mb-5">
+      <h2>{{ category }}</h2>
+      <div class="row g-3">
+        {% for demo in demos %}
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <h5 class="card-title">{{ demo.title }}</h5>
+                {% if demo.description %}<div class="card-text mb-2">{{ demo.description|richtext }}</div>{% endif %}
+                <audio controls class="w-100">
+                  <source src="{{ demo.audio_file.url }}" />
+                  Your browser does not support the audio element.
+                </audio>
+                {% if demo.duration %}<small class="text-muted d-block mt-1">Duration: {{ demo.duration }}</small>{% endif %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% empty %}
+    <p>Demo reels coming soon!</p>
+  {% endfor %}
+  {% if headshots %}
+    <section class="mb-5">
+      <h2>Headshots</h2>
+      <div class="row g-3">
+        {% for headshot in headshots %}
+          <div class="col-6 col-md-4 col-lg-3">
+            {% image headshot.image fill-300x400 class="img-fluid rounded" %}
+            {% if headshot.caption %}<p class="text-muted small mt-1">{{ headshot.caption }}</p>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+{% endblock content %}
