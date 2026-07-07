@@ -192,7 +192,7 @@ dependencies = [
     "psycopg[c]==3.3.4",
     "python-slugify==8.0.4",
     "rcssmin==1.2.2",
-    "redis==7.1.0",
+    "redis==8.0.1",
     "sentry-sdk==2.64.0",
     "wagtail==7.4.2",
     "django-taggit==6.1.0",
