@@ -84,11 +84,13 @@ THIRD_PARTY_APPS = [
     "wagtail.contrib.redirects",
     "wagtail.embeds",
     "wagtail.sites",
-    "wagtail.users",
     "wagtail.snippets",
     "wagtail.documents",
     "wagtail.images",
     "wagtail.search",
+    # Custom AppConfig for wagtail.users: swaps in our UserViewSet whose
+    # forms use the User model's single "name" field (no first/last name).
+    "tabitha_talking.users.apps.WagtailUsersAppConfig",
     "wagtail.admin",
     "wagtail",
     "modelcluster",
